@@ -1,16 +1,26 @@
-from flask import Flask, request, Response, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory
 from twilio.twiml.messaging_response import MessagingResponse
 from datetime import datetime
+import requests
 
 app = Flask(__name__)
 
-# Twilio Credentials
-ACCOUNT_SID = "ACded8c8e442fec247d27ac634e642b5bc"
-AUTH_TOKEN = "036b4133f3d6a7cb1811e2afa5c061ba"
-TWILIO_PHONE_NUMBER = "+15179958321"
+# Twilio and Google Maps API Credentials
+# ACCOUNT_SID = "ACded8c8e442fec247d27ac634e642b5bc"
+# AUTH_TOKEN = "036b4133f3d6a7cb1811e2afa5c061ba"
+# TWILIO_PHONE_NUMBER = "+15179958321"
+# GOOGLE_MAPS_API_KEY = "AIzaSyDJq8FL95iPyZ-j8A3KICQGo4awuADWNUs"
+
+ACCOUNT_SID = "ACc08851291881bbf6b6f7fc06a9e7bcc3"
+AUTH_TOKEN = "5270932520fdd7c878a4f5f2b780b9e4"
+TWILIO_PHONE_NUMBER = "+19363565178"
+GOOGLE_MAPS_API_KEY = "AIzaSyDJq8FL95iPyZ-j8A3KICQGo4awuADWNUs"
+
+# Store user sessions for context
+user_sessions = {}
 
 
-# Store user sessions for context (replace with a database in production)
+# Store user sessions for context
 user_sessions = {}
 
 @app.route("/sms", methods=["POST"])
@@ -18,17 +28,17 @@ def sms_reply():
     # Extract user input and phone number
     user_message = request.form.get("Body", "").strip().lower()
     user_phone = request.form.get("From")
-    
+
     # Create a Twilio response object
     twiml = MessagingResponse()
 
     # Initialize user session if not already active
     if user_phone not in user_sessions:
         user_sessions[user_phone] = {"pipeline": None, "step": None, "data": {}}
-    
+
     session = user_sessions[user_phone]
 
-    # Handle the START command
+    # MAIN pipeline: handle start and user options
     if session["pipeline"] is None and user_message == "start":
         twiml.message(
             "Welcome to the Natural Disaster Hotline! Please reply with:\n"
@@ -39,41 +49,67 @@ def sms_reply():
         session["pipeline"] = "main"
         session["step"] = "prompt"
 
-    # Handle the TRACK pipeline
-    elif session["pipeline"] == "main" and user_message == "track":
-        twiml.message(
-            "TRACK selected. Please share your location:\n"
-            "- Reply with your location as text (e.g., '123 Main St, City').\n"
-            "- Or click here to select your location: https://your-domain.com/select-location"
-        )
-        session["pipeline"] = "track"
-        session["step"] = "awaiting_location"
+    elif session["pipeline"] == "main":
+        if user_message == "track":
+            session["pipeline"] = "track"
+            session["step"] = "awaiting_location"
+            twiml.message(
+                "TRACK selected. Please share your location:\n"
+                "- Reply with your location as text (e.g., '123 Main St, City').\n"
+                "- Or click here to select your location: https://your-domain.com/select-location"
+            )
+        elif user_message == "report":
+            session["pipeline"] = "report"
+            session["step"] = "awaiting_location"
+            twiml.message(
+                "REPORT selected. Please share your location:\n"
+                "- Reply with your location as text (e.g., '123 Main St, City').\n"
+                "- Or click here to select your location: https://your-domain.com/select-location"
+            )
+        elif user_message == "view":
+            session["pipeline"] = "view"
+            session["step"] = "view_map"
+            twiml.message(
+                "VIEW selected. Visit the following link to view a map of ongoing disasters:\n"
+                "https://your-domain.com/map"
+            )
+            reset_session(session)
+        else:
+            twiml.message("Invalid input. Please reply with TRACK, VIEW, or REPORT.")
 
+    # TRACK pipeline
     elif session["pipeline"] == "track" and session["step"] == "awaiting_location":
-        session["data"]["location"] = user_message
-        twiml.message(
-            f"Thank you! You will receive alerts for disasters near {user_message}."
-        )
-        save_tracking_location(session["data"]["location"])
-        reset_session(session)
+        # if validate_location(user_message):
+        
+            session["data"]["location"] = user_message
+            twiml.message(
+                f"Thank you! You will now receive alerts for disasters near {user_message}."
+            )
+            save_tracking_location(session["data"]["location"])
+            reset_session(session)
+            
+            lat, lng = get_coordinates(user_message)
+            session['data']['latitude'] = lat
+            session['data']['longitude'] = lng
+            
+            print('lat', lat)
+            print('lng', lng)
 
-    # Handle the REPORT pipeline
-    elif session["pipeline"] == "main" and user_message == "report":
-        twiml.message(
-            "REPORT selected. Please share your location:\n"
-            "- Reply with your location as text (e.g., '123 Main St, City').\n"
-            "- Or click here to select your location: https://your-domain.com/select-location"
-        )
-        session["pipeline"] = "report"
-        session["step"] = "awaiting_location"
 
+            # get_coordinates()
+        # else:
+        #     twiml.message("Invalid address. Please send a valid address.")
+
+    # REPORT pipeline
     elif session["pipeline"] == "report" and session["step"] == "awaiting_location":
-        session["data"]["location"] = user_message
-        twiml.message(
-            "Thank you! Now, please specify the type of disaster (e.g., Flood, Earthquake, Fire)."
-        )
-        session["step"] = "awaiting_disaster_type"
-
+        # if validate_location(user_message):
+            session["data"]["location"] = user_message
+            session["step"] = "awaiting_disaster_type"
+            twiml.message(
+                "Thank you! Now, please specify the type of disaster (e.g., Flood, Earthquake, Fire)."
+            )
+        # else:
+        #     twiml.message("Invalid address. Please send a valid address.")
     elif session["pipeline"] == "report" and session["step"] == "awaiting_disaster_type":
         session["data"]["disaster_type"] = user_message
         session["data"]["timestamp"] = datetime.now().isoformat()
@@ -85,14 +121,6 @@ def sms_reply():
             "We will take it from here. Stay safe!"
         )
         save_report(session["data"])
-        reset_session(session)
-
-    # Handle the VIEW pipeline
-    elif session["pipeline"] == "main" and user_message == "view":
-        twiml.message(
-            "VIEW selected. Visit the following link to view a map of ongoing disasters:\n"
-            "https://your-domain.com/map"
-        )
         reset_session(session)
 
     else:
@@ -121,6 +149,48 @@ def select_location():
     return send_from_directory("static", "index.html")
 
 
+
+def validate_location(address):
+    """
+    Validates if the given address can be geocoded using the Google Maps Geocoding API.
+
+    Args:
+        address (str): The address to be validated.
+
+    Returns:
+        bool: True if the address can be geocoded successfully, False otherwise.
+    """
+    geocode_url = f"https://maps.googleapis.com/maps/api/geocode/json?address={address}&key={GOOGLE_MAPS_API_KEY}"
+    
+    # try:
+    response = requests.get(geocode_url)
+    geocode_data = response.json()
+
+    print(geocode_data)
+    #     # Debugging: Print the API response
+    #     print("Google Maps API Response:", geocode_data)
+
+    #     # Check if the API response status is 'OK' and results are non-empty
+    #     if geocode_data.get("status") == "OK" and geocode_data.get("results"):
+    #         return True
+    #     else:
+    #         return False
+    # except Exception as e:
+    #     print(f"Error validating address: {e}")
+    #     return False
+
+
+def get_coordinates(address):
+    geocode_url = f"https://maps.googleapis.com/maps/api/geocode/json?address={address}&key={GOOGLE_MAPS_API_KEY}"
+    response = requests.get(geocode_url)
+    geocode_data = response.json()
+    
+    if geocode_data['status'] == 'OK':
+        location = geocode_data['results'][0]['geometry']['location']
+        return location['lat'], location['lng']
+    else:
+        raise ValueError(f"Error from Geocoding API: {geocode_data['status']}")
+
 def save_tracking_location(location):
     # Mock function to save a tracking location
     print(f"Tracking location saved: {location}")
@@ -138,5 +208,5 @@ def reset_session(session):
     session["data"] = {}
 
 
-if __name__ == "__main__":
+if __name__== "__main__":
     app.run(debug=True)
