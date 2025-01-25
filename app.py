@@ -2,7 +2,8 @@ from flask import Flask, request, jsonify, send_from_directory
 from twilio.twiml.messaging_response import MessagingResponse
 from datetime import datetime
 import requests
-
+import csv
+import os
 app = Flask(__name__)
 
 # Twilio and Google Maps API Credentials
@@ -22,6 +23,11 @@ user_sessions = {}
 
 # Store user sessions for context
 user_sessions = {}
+
+lat = 0
+lng = 0
+report = ""
+
 
 @app.route("/sms", methods=["POST"])
 def sms_reply():
@@ -120,7 +126,10 @@ def sms_reply():
             f"Timestamp: {session['data']['timestamp']}\n"
             "We will take it from here. Stay safe!"
         )
-        save_report(session["data"])
+        
+        data = [lat, lng, report]
+        save_report(data, "data")
+        
         reset_session(session)
 
     else:
@@ -196,10 +205,29 @@ def save_tracking_location(location):
     print(f"Tracking location saved: {location}")
 
 
+
+def save_to_csv(data, filename='data.csv'):
+    # Define the CSV file headers
+    headers = ['lat', 'long', 'latitude', "report_desc"]
+    
+    # Check if the file exists
+    file_exists = os.path.isfile(filename)
+    
+    # Open the CSV file in append mode
+    with open(filename, mode='a', newline='') as file:
+        writer = csv.DictWriter(file, fieldnames=headers)
+        
+        # Write the headers if the file does not exist
+        if not file_exists:
+            writer.writeheader()
+        
+        # Write the data
+        writer.writerow(data)
+
 def save_report(data):
     # Mock function to save a report
     print(f"Report saved: {data}")
-
+    save_to_csv(data)
 
 def reset_session(session):
     # Reset user session
