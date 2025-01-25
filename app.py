@@ -4,18 +4,10 @@ from datetime import datetime
 import requests
 import csv
 import os
+from dotenv import load_dotenv
 app = Flask(__name__)
 
-# Twilio and Google Maps API Credentials
-# ACCOUNT_SID = "ACded8c8e442fec247d27ac634e642b5bc"
-# AUTH_TOKEN = "036b4133f3d6a7cb1811e2afa5c061ba"
-# TWILIO_PHONE_NUMBER = "+15179958321"
-# GOOGLE_MAPS_API_KEY = "AIzaSyDJq8FL95iPyZ-j8A3KICQGo4awuADWNUs"
-
-ACCOUNT_SID = "ACc08851291881bbf6b6f7fc06a9e7bcc3"
-AUTH_TOKEN = "5270932520fdd7c878a4f5f2b780b9e4"
-TWILIO_PHONE_NUMBER = "+19363565178"
-GOOGLE_MAPS_API_KEY = "AIzaSyDJq8FL95iPyZ-j8A3KICQGo4awuADWNUs"
+load_dotenv()
 
 # Store user sessions for context
 user_sessions = {}
@@ -169,7 +161,7 @@ def validate_location(address):
     Returns:
         bool: True if the address can be geocoded successfully, False otherwise.
     """
-    geocode_url = f"https://maps.googleapis.com/maps/api/geocode/json?address={address}&key={GOOGLE_MAPS_API_KEY}"
+    geocode_url = f"https://maps.googleapis.com/maps/api/geocode/json?address={address}&key={os.getenv('GOOGLE_MAPS_API_KEY')}"
     
     # try:
     response = requests.get(geocode_url)
