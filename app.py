@@ -182,7 +182,7 @@ def validate_location(address):
 
 
 def get_coordinates(address):
-    geocode_url = f"https://maps.googleapis.com/maps/api/geocode/json?address={address}&key={GOOGLE_MAPS_API_KEY}"
+    geocode_url = f"https://maps.googleapis.com/maps/api/geocode/json?address={address}&key={os.getenv('GOOGLE_MAPS_API_KEY')}"
     response = requests.get(geocode_url)
     geocode_data = response.json()
     
